@@ -9,7 +9,7 @@ services:
       - DATABASE_URL=file:/data/invoicing.sqlite
       # Ships ready with test credentials (zero config). Override in production.
       - JWT_SECRET=${JWT_SECRET:-shoaa-default-secret-change-me-in-coolify-env}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-abdu808@gmail.com}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@shoaa.local}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-123456}
       - ADMIN_NAME=${ADMIN_NAME:-المدير العام}
     volumes:
