@@ -30,10 +30,10 @@ ENV DATABASE_URL=file:/data/invoicing.sqlite
 # Defaults so the system deploys READY with test credentials (zero config).
 # Override these in production (Coolify env). Change ADMIN_PASSWORD from the
 # Settings page after first login. JWT_SECRET should be overridden in env.
-ENV ADMIN_EMAIL=admin@shoaa.local
-ENV ADMIN_PASSWORD=123456
-ENV ADMIN_NAME=المدير العام
-ENV JWT_SECRET=shoaa-default-secret-change-me-in-coolify-env
+ENV ADMIN_EMAIL="admin@shoaa.local"
+ENV ADMIN_PASSWORD="123456"
+ENV ADMIN_NAME="المدير العام"
+ENV JWT_SECRET="shoaa-default-secret-change-me-in-coolify-env"
 VOLUME /data
 EXPOSE 8080
 
