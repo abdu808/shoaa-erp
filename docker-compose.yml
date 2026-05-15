@@ -7,9 +7,10 @@ services:
       - NODE_ENV=production
       - PORT=8080
       - DATABASE_URL=file:/data/invoicing.sqlite
-      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin@123456}
+      # Ships ready with test credentials (zero config). Override in production.
+      - JWT_SECRET=${JWT_SECRET:-shoaa-default-secret-change-me-in-coolify-env}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-abdu808@gmail.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-123456}
       - ADMIN_NAME=${ADMIN_NAME:-المدير العام}
     volumes:
       # the single-file database lives on the host -> backup = copy this file
