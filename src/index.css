@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+* {
+  font-family: 'Cairo', sans-serif;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  direction: rtl;
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+  /* isolate the invoice: hide everything, show only the printable invoice */
+  body * { visibility: hidden; }
+  #invoice-print, #invoice-print * { visibility: visible; }
+  #invoice-print {
+    position: absolute;
+    inset: 0;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

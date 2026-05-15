@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function role() {
+      return userDoc().role;
+    }
+    function myOrg() {
+      return userDoc().orgId;
+    }
+    function isSuperAdmin() {
+      return isSignedIn() && role() == 'superadmin';
+    }
+    function ownsOrg(orgId) {
+      return isSignedIn() && (isSuperAdmin() || myOrg() == orgId);
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    match /clients/{clientId} {
+      allow read, update, delete: if isSuperAdmin()
+        || (isSignedIn() && resource.data.orgId == myOrg());
+      allow create: if isSuperAdmin()
+        || (isSignedIn() && request.resource.data.orgId == myOrg());
+    }
+
+    match /invoices/{invoiceId} {
+      allow read, update, delete: if isSuperAdmin()
+        || (isSignedIn() && resource.data.orgId == myOrg());
+      allow create: if isSuperAdmin()
+        || (isSignedIn() && request.resource.data.orgId == myOrg());
+    }
+
+    match /counters/{orgId} {
+      allow read, write: if ownsOrg(orgId);
+    }
+  }
+}
