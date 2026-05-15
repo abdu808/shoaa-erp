@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import Layout from '../../components/layout/Layout'
@@ -19,6 +19,8 @@ export default function InvoiceForm() {
   const navigate = useNavigate()
   const { id: editId } = useParams()
   const isEdit = !!editId
+  const location = useLocation()
+  const dup = location.state?.from   // duplicate source invoice
   const { userData } = useAuth()
   const [loading, setLoading] = useState(false)
   const [orgs, setOrgs] = useState([])
@@ -73,6 +75,22 @@ export default function InvoiceForm() {
       else { setClientMode('quick'); setQuickName(d.clientData?.name || ''); setQuickNumber(d.clientData?.phone || '') }
     }).catch(() => navigate('/invoices'))
   }, [isEdit, editId, navigate])
+
+  // Duplicate: prefill a NEW invoice from an existing one (no number/status/payments)
+  useEffect(() => {
+    if (isEdit || !dup) return
+    setDocType(dup.docType || 'tax')
+    setSelectedOrg(dup.orgId || '')
+    setNotes(dup.notes || '')
+    setDiscount(dup.discount || 0)
+    setDiscountType(dup.discountType || 'value')
+    setItems((dup.items || [{ ...emptyItem }]).map(it => ({
+      description: it.description, quantity: it.quantity,
+      unitPrice: it.unitPrice, taxCat: it.taxCat || 'standard',
+    })))
+    if (dup.clientId) { setClientMode('existing'); setSelectedClient(dup.clientId) }
+    else { setClientMode('quick'); setQuickName(dup.clientData?.name || ''); setQuickNumber(dup.clientData?.phone || '') }
+  }, [isEdit, dup])
 
   const updateItem = (i, field, value) => {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, [field]: value } : it))

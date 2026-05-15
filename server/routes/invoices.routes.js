@@ -91,8 +91,48 @@ export default async function invoicesRoutes(app) {
     }]
     return invoicesRepo.update(inv.id, { status, audit })
   }
-  app.post('/:id/pay', transition('paid', 'paid'))
   app.post('/:id/cancel', transition('cancelled', 'cancelled'))
+
+  // Record a (partial) payment. Body: { amount, method?, note? }.
+  // Omitting amount => pay the full remaining balance.
+  app.post('/:id/payments', async (req, reply) => {
+    const inv = await invoicesRepo.findById(req.params.id)
+    if (!inv) return reply.code(404).send({ error: 'غير موجود' })
+    if (!assertOwns(req, reply, inv.orgId)) return
+    if (inv.status === 'cancelled' || inv.status === 'draft')
+      return reply.code(400).send({ error: 'لا يمكن تسجيل دفعة على مستند مسودة/ملغى' })
+    const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
+    const paidSoFar = round2((inv.payments || []).reduce((s, p) => s + (+p.amount || 0), 0))
+    const balance = round2(inv.total - paidSoFar)
+    let amount = req.body?.amount != null ? round2(req.body.amount) : balance
+    if (!(amount > 0)) return reply.code(400).send({ error: 'مبلغ غير صالح' })
+    if (amount > balance) return reply.code(400).send({ error: `المبلغ يتجاوز الرصيد المتبقي (${balance})` })
+    const payment = {
+      amount,
+      method: req.body?.method || 'نقدًا',
+      note: req.body?.note || '',
+      date: new Date().toISOString(),
+      by: req.user.email,
+    }
+    return invoicesRepo.recordPayment(inv.id, payment, req.user.email)
+  })
+
+  // Backward-compatible "mark fully paid" shortcut
+  app.post('/:id/pay', async (req, reply) => {
+    const inv = await invoicesRepo.findById(req.params.id)
+    if (!inv) return reply.code(404).send({ error: 'غير موجود' })
+    if (!assertOwns(req, reply, inv.orgId)) return
+    if (inv.status === 'cancelled' || inv.status === 'draft')
+      return reply.code(400).send({ error: 'حالة غير صالحة' })
+    const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
+    const paid = round2((inv.payments || []).reduce((s, p) => s + (+p.amount || 0), 0))
+    const balance = round2(inv.total - paid)
+    if (balance <= 0) return invoicesRepo.update(inv.id, { status: 'paid' })
+    return invoicesRepo.recordPayment(inv.id, {
+      amount: balance, method: 'نقدًا', note: 'سداد كامل',
+      date: new Date().toISOString(), by: req.user.email,
+    }, req.user.email)
+  })
 
   app.delete('/:id', async (req, reply) => {
     const inv = await invoicesRepo.findById(req.params.id)

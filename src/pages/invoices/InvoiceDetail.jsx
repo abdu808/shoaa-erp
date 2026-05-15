@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../../api'
 import Layout from '../../components/layout/Layout'
 import { Printer, ArrowRight, CheckCircle } from 'lucide-react'
-import { formatCurrency, formatDate, generateZatcaQR } from '../../utils/zatca'
+import { formatCurrency, formatDate, generateZatcaQR, amountToArabicWords } from '../../utils/zatca'
 import QRCode from 'qrcode'
 
-const statusLabels = { draft: 'مسودة', issued: 'صادرة', paid: 'مدفوعة', cancelled: 'ملغاة' }
+const statusLabels = { draft: 'مسودة', issued: 'صادرة', partial: 'مدفوعة جزئيًا', paid: 'مدفوعة', cancelled: 'ملغاة' }
 
 export default function InvoiceDetail() {
   const { id } = useParams()
@@ -42,9 +42,37 @@ export default function InvoiceDetail() {
     }).catch(() => {})
   }, [id])
 
+  const [payAmount, setPayAmount] = useState('')
+  const [payMethod, setPayMethod] = useState('نقدًا')
+  const [payNote, setPayNote] = useState('')
+  const [payBusy, setPayBusy] = useState(false)
+
+  const refresh = async () => {
+    const d = await api.getInvoice(id)
+    if (d) setInvoice(d)
+  }
+
   const markAsPaid = async () => {
-    const updated = await api.markPaid(id)
-    setInvoice(p => ({ ...p, status: 'paid', audit: updated?.audit ?? p.audit }))
+    await api.markPaid(id)
+    await refresh()
+  }
+
+  const submitPayment = async (e) => {
+    e.preventDefault()
+    setPayBusy(true)
+    try {
+      await api.recordPayment(id, {
+        amount: Number(payAmount),
+        method: payMethod,
+        note: payNote,
+      })
+      setPayAmount(''); setPayNote('')
+      await refresh()
+    } catch (err) {
+      alert(err.message || 'تعذّر تسجيل الدفعة')
+    } finally {
+      setPayBusy(false)
+    }
   }
 
   const handlePrint = () => {
@@ -79,6 +107,12 @@ export default function InvoiceDetail() {
     : invoice.docType === 'credit' ? 'bg-rose-600'
     : invoice.docType === 'debit' ? 'bg-violet-600'
     : 'bg-blue-600'
+  const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100
+  const payments = invoice.payments || []
+  const paidTotal = round2(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0))
+  const balance = round2((invoice.total || 0) - paidTotal)
+  const canPay = !isInternal && invoice.status !== 'cancelled'
+    && invoice.status !== 'draft' && balance > 0
 
   return (
     <Layout>
@@ -88,10 +122,10 @@ export default function InvoiceDetail() {
           <ArrowRight size={16} /> العودة للفواتير
         </button>
         <div className="flex gap-3">
-          {invoice.status !== 'paid' && (
+          {canPay && (
             <button onClick={markAsPaid}
               className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all">
-              <CheckCircle size={16} /> تعيين كمدفوعة
+              <CheckCircle size={16} /> سداد كامل
             </button>
           )}
           <button onClick={handlePrint}
@@ -130,6 +164,7 @@ export default function InvoiceDetail() {
               <p>التاريخ: {formatDate(invoice.createdAt)}</p>
               <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
                 invoice.status === 'paid' ? 'bg-green-100 text-green-700' :
+                invoice.status === 'partial' ? 'bg-amber-100 text-amber-700' :
                 invoice.status === 'issued' ? 'bg-blue-100 text-blue-700' :
                 'bg-slate-100 text-slate-600'
               }`}>
@@ -214,6 +249,9 @@ export default function InvoiceDetail() {
               <span>الإجمالي</span>
               <span>{formatCurrency(invoice.total)}</span>
             </div>
+            <div className="bg-slate-50 rounded-lg p-2 mt-1 text-xs text-slate-600 text-center">
+              {amountToArabicWords(invoice.total)}
+            </div>
             {org.iban && (
               <div className="bg-blue-50 rounded-lg p-3 mt-2">
                 <p className="text-xs text-slate-500">رقم الآيبان للتحويل</p>
@@ -244,14 +282,85 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
+      {!isInternal && invoice.status !== 'draft' && (
+        <div className="no-print max-w-3xl mx-auto mt-6 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="font-semibold text-slate-700 mb-4">الدفعات والسداد</h3>
+          <div className="grid grid-cols-3 gap-3 mb-5 text-center">
+            <div className="bg-slate-50 rounded-xl p-3">
+              <p className="text-xs text-slate-400">الإجمالي</p>
+              <p className="font-bold text-slate-800">{formatCurrency(invoice.total)}</p>
+            </div>
+            <div className="bg-green-50 rounded-xl p-3">
+              <p className="text-xs text-slate-400">المدفوع</p>
+              <p className="font-bold text-green-700">{formatCurrency(paidTotal)}</p>
+            </div>
+            <div className={`rounded-xl p-3 ${balance > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
+              <p className="text-xs text-slate-400">المتبقي</p>
+              <p className={`font-bold ${balance > 0 ? 'text-amber-700' : 'text-slate-500'}`}>{formatCurrency(balance)}</p>
+            </div>
+          </div>
+
+          {payments.length > 0 && (
+            <div className="mb-5 space-y-2">
+              {payments.map((p, i) => (
+                <div key={i} className="flex items-center justify-between text-sm border-b border-slate-50 pb-2 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                      {formatCurrency(p.amount)}
+                    </span>
+                    <span className="text-slate-500">{p.method}{p.note ? ` — ${p.note}` : ''}</span>
+                  </div>
+                  <span className="text-slate-400 text-xs">
+                    {new Date(p.date).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })} · {p.by}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canPay ? (
+            <form onSubmit={submitPayment} className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-3">
+                <label className="block text-xs text-slate-500 mb-1">المبلغ</label>
+                <input type="number" step="0.01" min="0" max={balance} required
+                  value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                  placeholder={String(balance)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div className="col-span-3">
+                <label className="block text-xs text-slate-500 mb-1">الطريقة</label>
+                <select value={payMethod} onChange={e => setPayMethod(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option>نقدًا</option><option>تحويل بنكي</option><option>شبكة</option><option>شيك</option>
+                </select>
+              </div>
+              <div className="col-span-4">
+                <label className="block text-xs text-slate-500 mb-1">ملاحظة</label>
+                <input value={payNote} onChange={e => setPayNote(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <button type="submit" disabled={payBusy}
+                className="col-span-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-60">
+                {payBusy ? '...' : 'تسجيل دفعة'}
+              </button>
+            </form>
+          ) : (
+            <p className="text-sm text-center text-slate-400">
+              {balance <= 0 ? 'تم السداد بالكامل ✓' : 'لا يمكن تسجيل دفعات على هذا المستند'}
+            </p>
+          )}
+        </div>
+      )}
+
       {invoice.audit?.length > 0 && (
         <div className="no-print max-w-3xl mx-auto mt-6 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h3 className="font-semibold text-slate-700 mb-4">سجل التدقيق</h3>
           <div className="space-y-2">
             {[...invoice.audit].reverse().map((a, i) => {
-              const actionLabels = { created: 'إنشاء', edited: 'تعديل', paid: 'تعيين كمدفوعة', cancelled: 'إلغاء' }
+              const actionLabels = { created: 'إنشاء', edited: 'تعديل', payment: 'دفعة', paid: 'سداد كامل', cancelled: 'إلغاء' }
               const colors = {
                 created: 'bg-blue-100 text-blue-700', edited: 'bg-amber-100 text-amber-700',
+                payment: 'bg-teal-100 text-teal-700',
                 paid: 'bg-green-100 text-green-700', cancelled: 'bg-red-100 text-red-700',
               }
               return (

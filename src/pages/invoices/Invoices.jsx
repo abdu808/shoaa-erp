@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
-import { FileText, Plus, Eye, Trash2, Search, Pencil } from 'lucide-react'
+import { FileText, Plus, Eye, Trash2, Search, Pencil, Copy } from 'lucide-react'
 import { formatCurrency, formatDate } from '../../utils/zatca'
 
 const statusColors = {
   draft: 'bg-slate-100 text-slate-600',
   issued: 'bg-blue-100 text-blue-700',
+  partial: 'bg-amber-100 text-amber-700',
   paid: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
 }
-const statusLabels = { draft: 'مسودة', issued: 'صادرة', paid: 'مدفوعة', cancelled: 'ملغاة' }
+const statusLabels = { draft: 'مسودة', issued: 'صادرة', partial: 'مدفوعة جزئيًا', paid: 'مدفوعة', cancelled: 'ملغاة' }
 
 export default function Invoices() {
   const { userData } = useAuth()
+  const navigate = useNavigate()
   const [invoices, setInvoices] = useState([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -109,6 +111,11 @@ export default function Invoices() {
                         className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
                         <Eye size={15} />
                       </Link>
+                      <button onClick={() => navigate('/invoices/new', { state: { from: inv } })}
+                        title="نسخ كفاتورة جديدة"
+                        className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-all">
+                        <Copy size={15} />
+                      </button>
                       {inv.status === 'draft' && (
                         <Link to={`/invoices/${inv.id}/edit`}
                           title="تعديل المسودة"

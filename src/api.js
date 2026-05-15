@@ -71,6 +71,7 @@ export const api = {
   createInvoice: (payload) => post('/invoices', payload),
   updateDraft: (id, payload) => put(`/invoices/${id}/draft`, payload),
   markPaid: (id) => post(`/invoices/${id}/pay`),
+  recordPayment: (id, payment) => post(`/invoices/${id}/payments`, payment),
   cancelInvoice: (id) => post(`/invoices/${id}/cancel`),
   deleteInvoice: (id) => del(`/invoices/${id}`),
 

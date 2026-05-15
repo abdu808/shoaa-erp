@@ -74,7 +74,8 @@ model Invoice {
   vat           Float    @default(0)
   total         Float    @default(0)
   notes         String?
-  status        String   @default("issued") // draft | issued | paid | cancelled
+  status        String   @default("issued") // draft|issued|partial|paid|cancelled
+  payments      Json     @default("[]") // [{amount,date,method,note,by}]
   createdBy     Json?
   audit         Json
   createdAt     DateTime @default(now())
