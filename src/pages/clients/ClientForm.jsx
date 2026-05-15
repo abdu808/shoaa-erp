@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { doc, getDoc, setDoc, addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
@@ -20,13 +19,9 @@ export default function ClientForm() {
   })
 
   useEffect(() => {
-    getDocs(collection(db, 'organizations')).then(snap => {
-      setOrgs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    })
+    api.listOrgs().then(setOrgs).catch(() => {})
     if (isEdit) {
-      getDoc(doc(db, 'clients', id)).then(snap => {
-        if (snap.exists()) setForm(snap.data())
-      })
+      api.getClient(id).then(c => { if (c) setForm(c) }).catch(() => {})
     } else if (userData?.role === 'manager') {
       setForm(p => ({ ...p, orgId: userData.orgId }))
     }
@@ -40,11 +35,7 @@ export default function ClientForm() {
     if (vatErr) { alert(vatErr); return }
     setLoading(true)
     try {
-      if (isEdit) {
-        await setDoc(doc(db, 'clients', id), { ...form, updatedAt: serverTimestamp() }, { merge: true })
-      } else {
-        await addDoc(collection(db, 'clients'), { ...form, createdAt: serverTimestamp() })
-      }
+      await api.saveClient(isEdit ? id : null, form)
       navigate('/clients')
     } catch {
       alert('حدث خطأ، حاول مرة أخرى')

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import Layout from '../../components/layout/Layout'
@@ -14,12 +13,7 @@ export default function Clients() {
   const [loading, setLoading] = useState(true)
 
   const fetchClients = async () => {
-    const isSuperAdmin = userData?.role === 'superadmin'
-    const q = isSuperAdmin
-      ? collection(db, 'clients')
-      : query(collection(db, 'clients'), where('orgId', '==', userData?.orgId))
-    const snap = await getDocs(q)
-    setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    setClients(await api.listClients())
     setLoading(false)
   }
 
@@ -27,7 +21,7 @@ export default function Clients() {
 
   const handleDelete = async (id) => {
     if (!confirm('حذف هذا العميل؟')) return
-    await deleteDoc(doc(db, 'clients', id))
+    await api.deleteClient(id)
     fetchClients()
   }
 

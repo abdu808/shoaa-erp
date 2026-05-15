@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { doc, getDoc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
 import Field from '../../components/ui/Field'
@@ -20,9 +19,7 @@ export default function OrganizationForm() {
 
   useEffect(() => {
     if (isEdit) {
-      getDoc(doc(db, 'organizations', id)).then(snap => {
-        if (snap.exists()) setForm(snap.data())
-      })
+      api.getOrg(id).then(o => { if (o) setForm(o) }).catch(() => {})
     }
   }, [id, isEdit])
 
@@ -37,11 +34,7 @@ export default function OrganizationForm() {
     if (vatErr) { alert(vatErr); return }
     setLoading(true)
     try {
-      if (isEdit) {
-        await setDoc(doc(db, 'organizations', id), { ...form, updatedAt: serverTimestamp() }, { merge: true })
-      } else {
-        await addDoc(collection(db, 'organizations'), { ...form, createdAt: serverTimestamp() })
-      }
+      await api.saveOrg(isEdit ? id : null, form)
       navigate('/organizations')
     } catch (err) {
       alert('حدث خطأ، حاول مرة أخرى')

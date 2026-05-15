@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, query, where, orderBy, limit, deleteDoc, updateDoc, arrayUnion, doc } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import Layout from '../../components/layout/Layout'
@@ -23,12 +22,7 @@ export default function Invoices() {
   const [loading, setLoading] = useState(true)
 
   const fetchInvoices = async () => {
-    const isSuperAdmin = userData?.role === 'superadmin'
-    const q = isSuperAdmin
-      ? query(collection(db, 'invoices'), orderBy('createdAt', 'desc'), limit(200))
-      : query(collection(db, 'invoices'), where('orgId', '==', userData?.orgId), orderBy('createdAt', 'desc'), limit(200))
-    const snap = await getDocs(q)
-    setInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    setInvoices(await api.listInvoices({ limit: 200 }))
     setLoading(false)
   }
 
@@ -37,18 +31,11 @@ export default function Invoices() {
   const handleDelete = async (inv) => {
     if (inv.status === 'draft') {
       if (!confirm('حذف هذه المسودة نهائيًا؟')) return
-      await deleteDoc(doc(db, 'invoices', inv.id))
+      await api.deleteInvoice(inv.id)
     } else {
       if (inv.status === 'cancelled') return
       if (!confirm('لا يمكن حذف فاتورة صادرة نظاميًا. سيتم إلغاؤها مع بقاء سجلها وتسلسلها. متابعة؟')) return
-      await updateDoc(doc(db, 'invoices', inv.id), {
-        status: 'cancelled',
-        audit: arrayUnion({
-          action: 'cancelled',
-          by: userData?.email || '',
-          at: new Date().toISOString(),
-        }),
-      })
+      await api.cancelInvoice(inv.id)
     }
     fetchInvoices()
   }

@@ -1,14 +1,10 @@
 import { useState } from 'react'
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
-import { collection, getDocs } from 'firebase/firestore'
-import { auth, db } from '../../firebase'
-import { useAuth } from '../../contexts/AuthContext'
+import { api } from '../../api'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
 import { KeyRound, Download, ShieldCheck } from 'lucide-react'
 
 export default function Settings() {
-  const { userData } = useAuth()
   const [cur, setCur] = useState('')
   const [pw1, setPw1] = useState('')
   const [pw2, setPw2] = useState('')
@@ -23,13 +19,11 @@ export default function Settings() {
     if (pw1 !== pw2) return setMsg({ t: 'err', m: 'كلمتا المرور غير متطابقتين' })
     setLoading(true)
     try {
-      const cred = EmailAuthProvider.credential(auth.currentUser.email, cur)
-      await reauthenticateWithCredential(auth.currentUser, cred)
-      await updatePassword(auth.currentUser, pw1)
+      await api.changePassword(cur, pw1)
       setMsg({ t: 'ok', m: 'تم تغيير كلمة المرور بنجاح' })
       setCur(''); setPw1(''); setPw2('')
-    } catch {
-      setMsg({ t: 'err', m: 'كلمة المرور الحالية غير صحيحة' })
+    } catch (e) {
+      setMsg({ t: 'err', m: e.message || 'كلمة المرور الحالية غير صحيحة' })
     } finally {
       setLoading(false)
     }
@@ -38,14 +32,7 @@ export default function Settings() {
   const exportData = async () => {
     setExporting(true)
     try {
-      const cols = userData?.role === 'superadmin'
-        ? ['organizations', 'clients', 'invoices', 'users', 'counters']
-        : ['clients', 'invoices']
-      const data = {}
-      for (const c of cols) {
-        const snap = await getDocs(collection(db, c))
-        data[c] = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      }
+      const data = await api.exportBackup()
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)

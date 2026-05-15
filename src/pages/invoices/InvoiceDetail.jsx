@@ -1,8 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore'
-import { db } from '../../firebase'
-import { useAuth } from '../../contexts/AuthContext'
+import { api } from '../../api'
 import Layout from '../../components/layout/Layout'
 import { Printer, ArrowRight, CheckCircle } from 'lucide-react'
 import { formatCurrency, formatDate, generateZatcaQR } from '../../utils/zatca'
@@ -13,20 +11,18 @@ const statusLabels = { draft: 'مسودة', issued: 'صادرة', paid: 'مدف�
 export default function InvoiceDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { userData } = useAuth()
   const [invoice, setInvoice] = useState(null)
   const [orgLogo, setOrgLogo] = useState('')
   const [qrDataUrl, setQrDataUrl] = useState('')
   const printRef = useRef()
 
   useEffect(() => {
-    getDoc(doc(db, 'invoices', id)).then(snap => {
-      if (snap.exists()) {
-        const data = { id: snap.id, ...snap.data() }
+    api.getInvoice(id).then(data => {
+      if (data) {
         setInvoice(data)
         if (data.orgId) {
-          getDoc(doc(db, 'organizations', data.orgId))
-            .then(o => { if (o.exists()) setOrgLogo(o.data().logo || '') })
+          api.getOrg(data.orgId)
+            .then(o => { if (o) setOrgLogo(o.logo || '') })
             .catch(() => {})
         }
         if (data.docType !== 'internal') {
@@ -43,19 +39,12 @@ export default function InvoiceDetail() {
           QRCode.toDataURL(qrValue, { width: 120 }).then(setQrDataUrl)
         }
       }
-    })
+    }).catch(() => {})
   }, [id])
 
   const markAsPaid = async () => {
-    await updateDoc(doc(db, 'invoices', id), {
-      status: 'paid',
-      audit: arrayUnion({
-        action: 'paid',
-        by: userData?.email || '',
-        at: new Date().toISOString(),
-      }),
-    })
-    setInvoice(p => ({ ...p, status: 'paid' }))
+    const updated = await api.markPaid(id)
+    setInvoice(p => ({ ...p, status: 'paid', audit: updated?.audit ?? p.audit }))
   }
 
   const handlePrint = () => {

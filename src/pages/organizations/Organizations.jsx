@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { Link } from 'react-router-dom'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
@@ -11,8 +10,7 @@ export default function Organizations() {
   const [loading, setLoading] = useState(true)
 
   const fetchOrgs = async () => {
-    const snap = await getDocs(collection(db, 'organizations'))
-    setOrgs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    setOrgs(await api.listOrgs())
     setLoading(false)
   }
 
@@ -20,7 +18,7 @@ export default function Organizations() {
 
   const handleDelete = async (id) => {
     if (!confirm('هل أنت متأكد من حذف هذه المؤسسة؟')) return
-    await deleteDoc(doc(db, 'organizations', id))
+    await api.deleteOrg(id)
     fetchOrgs()
   }
 

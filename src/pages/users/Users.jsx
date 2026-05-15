@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, deleteDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
-import { auth, db } from '../../firebase'
+import { api } from '../../api'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
 import { UserCog, Plus, Trash2, X } from 'lucide-react'
@@ -16,19 +14,16 @@ export default function Users() {
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'manager', orgId: '' })
 
   const fetchUsers = async () => {
-    const [usersSnap, orgsSnap] = await Promise.all([
-      getDocs(collection(db, 'users')),
-      getDocs(collection(db, 'organizations')),
-    ])
-    setUsers(usersSnap.docs.map(d => ({ id: d.id, ...d.data() })))
-    setOrgs(orgsSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+    const [u, o] = await Promise.all([api.listUsers(), api.listOrgs()])
+    setUsers(u)
+    setOrgs(o)
   }
 
   useEffect(() => { fetchUsers() }, [])
 
   const handleDelete = async (id) => {
     if (!confirm('حذف هذا المستخدم؟')) return
-    await deleteDoc(doc(db, 'users', id))
+    await api.deleteUser(id)
     fetchUsers()
   }
 
@@ -36,14 +31,12 @@ export default function Users() {
     e.preventDefault()
     setLoading(true)
     try {
-      const cred = await createUserWithEmailAndPassword(auth, form.email, form.password)
-      await setDoc(doc(db, 'users', cred.user.uid), {
-        uid: cred.user.uid,
+      await api.createUser({
         name: form.name,
         email: form.email,
+        password: form.password,
         role: form.role,
         orgId: form.role === 'manager' ? form.orgId : null,
-        createdAt: serverTimestamp(),
       })
       setShowModal(false)
       setForm({ name: '', email: '', password: '', role: 'manager', orgId: '' })

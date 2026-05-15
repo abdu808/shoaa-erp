@@ -1,32 +1,43 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
-import { auth, db } from '../firebase'
+import { api, getToken } from '../api'
 
 const AuthContext = createContext(null)
 
+// Public contract is unchanged: { user, userData, loading, login, logout }.
+// userData = { uid, id, name, email, role, orgId } — same shape pages expect.
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userData, setUserData] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const snap = await getDoc(doc(db, 'users', firebaseUser.uid))
-        setUserData(snap.exists() ? snap.data() : null)
-        setUser(firebaseUser)
-      } else {
-        setUser(null)
-        setUserData(null)
+    let active = true
+    ;(async () => {
+      if (getToken()) {
+        try {
+          const me = await api.me()
+          if (active) { setUser(me); setUserData(me) }
+        } catch {
+          api.logout()
+        }
       }
-      setLoading(false)
-    })
-    return unsub
+      if (active) setLoading(false)
+    })()
+    return () => { active = false }
   }, [])
 
-  const login = (email, password) => signInWithEmailAndPassword(auth, email, password)
-  const logout = () => signOut(auth)
+  const login = async (email, password) => {
+    const me = await api.login(email, password)
+    setUser(me)
+    setUserData(me)
+    return me
+  }
+
+  const logout = async () => {
+    api.logout()
+    setUser(null)
+    setUserData(null)
+  }
 
   return (
     <AuthContext.Provider value={{ user, userData, loading, login, logout }}>

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
@@ -24,19 +23,14 @@ export default function Reports() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getDocs(collection(db, 'organizations')).then(snap =>
-      setOrgs(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+    api.listOrgs().then(setOrgs).catch(() => {})
   }, [])
 
   useEffect(() => {
-    const isSuper = userData?.role === 'superadmin'
-    const base = isSuper
-      ? query(collection(db, 'invoices'), orderBy('createdAt', 'desc'))
-      : query(collection(db, 'invoices'), where('orgId', '==', userData?.orgId), orderBy('createdAt', 'desc'))
-    getDocs(base).then(snap => {
-      setInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    api.listInvoices({ limit: 100000 }).then(list => {
+      setInvoices(list)
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [userData])
 
   const inRange = invoices.filter(inv => {

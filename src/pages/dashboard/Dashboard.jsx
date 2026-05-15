@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, getDocs, query, where } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
@@ -14,28 +13,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchStats = async () => {
-      const isSuperAdmin = userData?.role === 'superadmin'
-      const orgId = userData?.orgId
-
-      const orgsSnap = await getDocs(collection(db, 'organizations'))
-      const clientsQuery = isSuperAdmin
-        ? collection(db, 'clients')
-        : query(collection(db, 'clients'), where('orgId', '==', orgId))
-      const invoicesQuery = isSuperAdmin
-        ? collection(db, 'invoices')
-        : query(collection(db, 'invoices'), where('orgId', '==', orgId))
-
-      const [clientsSnap, invoicesSnap] = await Promise.all([
-        getDocs(clientsQuery),
-        getDocs(invoicesQuery),
+      const [orgs, clients, invoices] = await Promise.all([
+        userData?.role === 'superadmin' ? api.listOrgs() : Promise.resolve([]),
+        api.listClients(),
+        api.listInvoices({ limit: 100000 }),
       ])
-
-      const totalRevenue = invoicesSnap.docs.reduce((sum, d) => sum + (d.data().total || 0), 0)
-
+      const totalRevenue = invoices.reduce((sum, d) => sum + (d.total || 0), 0)
       setStats({
-        orgs: orgsSnap.size,
-        clients: clientsSnap.size,
-        invoices: invoicesSnap.size,
+        orgs: orgs.length,
+        clients: clients.length,
+        invoices: invoices.length,
         total: totalRevenue,
       })
     }

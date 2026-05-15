@@ -1,0 +1,93 @@
+// Portable schema — switch `provider` to "postgresql" later with NO model rewrite.
+// No SQLite-specific features used: String ids, Json scalars (TEXT on SQLite /
+// jsonb on Postgres), DateTime, plain unique/index. Status/role/docType are
+// String (not enum) so the same schema runs on SQLite AND PostgreSQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("manager") // 'superadmin' | 'manager'
+  orgId     String?
+  createdAt DateTime @default(now())
+}
+
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  nameEn        String?
+  taxNumber     String?
+  commercialReg String?
+  address       String?
+  phone         String?
+  email         String?
+  iban          String?
+  invoicePrefix String   @default("INV")
+  invoiceStart  Int      @default(1)
+  logo          String?  // base64 data URL
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Client {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  phone     String?
+  email     String?
+  address   String?
+  vatNumber String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+}
+
+model Invoice {
+  id            String   @id @default(cuid())
+  orgId         String
+  orgName       String?
+  docType       String   @default("tax") // tax | internal | credit | debit
+  refInvoice    String?
+  invoiceType   String? // standard | simplified | null
+  orgData       Json
+  clientId      String?
+  clientName    String?
+  clientData    Json
+  invoiceNumber String
+  items         Json
+  subtotal      Float    @default(0)
+  discount      Float    @default(0)
+  discountType  String   @default("value")
+  taxableBase   Float    @default(0)
+  vat           Float    @default(0)
+  total         Float    @default(0)
+  notes         String?
+  status        String   @default("issued") // draft | issued | paid | cancelled
+  createdBy     Json?
+  audit         Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([orgId, invoiceNumber]) // hard safety net for ZATCA no-dupes
+  @@index([orgId, createdAt])
+}
+
+model Counter {
+  orgId         String @id
+  invoiceCount  Int    @default(0)
+  internalCount Int    @default(0)
+  creditCount   Int    @default(0)
+  debitCount    Int    @default(0)
+}

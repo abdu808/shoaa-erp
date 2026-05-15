@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { collection, getDocs, getDoc, updateDoc, arrayUnion, query, where, orderBy, serverTimestamp, runTransaction, doc } from 'firebase/firestore'
-import { db } from '../../firebase'
+import { api } from '../../api'
 import { useAuth } from '../../contexts/AuthContext'
 import Layout from '../../components/layout/Layout'
 import PageHeader from '../../components/ui/PageHeader'
@@ -39,28 +38,25 @@ export default function InvoiceForm() {
   const [orgInvoices, setOrgInvoices] = useState([])
 
   useEffect(() => {
-    getDocs(collection(db, 'organizations')).then(snap =>
-      setOrgs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    )
+    api.listOrgs().then(setOrgs).catch(() => {})
     if (userData?.role === 'manager') setSelectedOrg(userData.orgId)
   }, [userData])
 
   useEffect(() => {
     if (!selectedOrg) { setClients([]); setOrgInvoices([]); return }
-    getDocs(query(collection(db, 'clients'), where('orgId', '==', selectedOrg))).then(snap =>
-      setClients(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    )
-    getDocs(query(collection(db, 'invoices'), where('orgId', '==', selectedOrg), orderBy('createdAt', 'desc'))).then(snap =>
-      setOrgInvoices(snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(inv => inv.docType === 'tax'))
-    )
+    api.listClients()
+      .then(all => setClients(all.filter(c => c.orgId === selectedOrg)))
+      .catch(() => {})
+    api.listInvoices({ limit: 100000 })
+      .then(all => setOrgInvoices(
+        all.filter(inv => inv.orgId === selectedOrg && inv.docType === 'tax')))
+      .catch(() => {})
   }, [selectedOrg])
 
   useEffect(() => {
     if (!isEdit) return
-    getDoc(doc(db, 'invoices', editId)).then(snap => {
-      if (!snap.exists()) return navigate('/invoices')
-      const d = snap.data()
+    api.getInvoice(editId).then(d => {
+      if (!d) return navigate('/invoices')
       if (d.status !== 'draft') { alert('لا يمكن تعديل مستند صادر — يمكن تعديل المسودّات فقط'); return navigate('/invoices') }
       setDocType(d.docType || 'tax')
       setSelectedOrg(d.orgId || '')
@@ -75,7 +71,7 @@ export default function InvoiceForm() {
       })))
       if (d.clientId) { setClientMode('existing'); setSelectedClient(d.clientId) }
       else { setClientMode('quick'); setQuickName(d.clientData?.name || ''); setQuickNumber(d.clientData?.phone || '') }
-    })
+    }).catch(() => navigate('/invoices'))
   }, [isEdit, editId, navigate])
 
   const updateItem = (i, field, value) => {
@@ -119,11 +115,6 @@ export default function InvoiceForm() {
             name: existingClient?.name, vatNumber: existingClient?.vatNumber,
             address: existingClient?.address, phone: existingClient?.phone,
           }
-      const actor = {
-        uid: userData?.uid || null,
-        name: userData?.name || '',
-        email: userData?.email || '',
-      }
       const itemsData = items.map(it => ({
         description: it.description,
         quantity: num(it.quantity),
@@ -131,76 +122,33 @@ export default function InvoiceForm() {
         taxCat: it.taxCat || 'standard',
         total: round2(num(it.quantity) * num(it.unitPrice)),
       }))
-
-      if (isEdit) {
-        await updateDoc(doc(db, 'invoices', editId), {
-          docType,
-          refInvoice: isNote ? refInvoice.trim() : null,
-          invoiceType: isInternal ? null : (clientData?.vatNumber ? 'standard' : 'simplified'),
-          clientId: useQuick ? null : selectedClient,
-          clientName: clientData?.name,
-          clientData,
-          items: itemsData,
-          subtotal, discount: discountVal, discountType, taxableBase, vat, total, notes, status,
-          audit: arrayUnion({ action: 'edited', by: actor.email, at: new Date().toISOString() }),
-          updatedAt: serverTimestamp(),
-        })
-        navigate('/invoices')
-        return
+      const payload = {
+        orgId: selectedOrg,
+        orgName: orgData?.name,
+        docType,
+        refInvoice: isNote ? refInvoice.trim() : null,
+        invoiceType: isInternal
+          ? null
+          : (clientData?.vatNumber ? 'standard' : 'simplified'),
+        orgData: {
+          name: orgData?.name, nameEn: orgData?.nameEn,
+          taxNumber: orgData?.taxNumber, commercialReg: orgData?.commercialReg,
+          address: orgData?.address, phone: orgData?.phone,
+          iban: orgData?.iban,
+        },
+        clientId: useQuick ? null : selectedClient,
+        clientName: clientData?.name,
+        clientData,
+        items: itemsData,
+        subtotal, discount: discountVal, discountType, taxableBase,
+        vat, total, notes, status,
       }
 
-      const counterRef = doc(db, 'counters', selectedOrg)
-      const invoiceRef = doc(collection(db, 'invoices'))
-
-      await runTransaction(db, async (tx) => {
-        const counterSnap = await tx.get(counterRef)
-        const counterData = counterSnap.exists() ? counterSnap.data() : {}
-        const counterMap = {
-          tax: { field: 'invoiceCount', suffix: '' },
-          internal: { field: 'internalCount', suffix: '-D' },
-          credit: { field: 'creditCount', suffix: '-CN' },
-          debit: { field: 'debitCount', suffix: '-DN' },
-        }
-        const { field: countField, suffix } = counterMap[docType]
-        const startNum = docType === 'tax'
-          ? Math.max(1, parseInt(orgData?.invoiceStart, 10) || 1)
-          : 1
-        const count = counterData[countField] != null
-          ? counterData[countField] + 1
-          : startNum
-        const basePrefix = orgData?.invoicePrefix || 'INV'
-        const invoiceNumber = `${basePrefix}${suffix}-${String(count).padStart(5, '0')}`
-
-        tx.set(counterRef, { [countField]: count }, { merge: true })
-        tx.set(invoiceRef, {
-          orgId: selectedOrg,
-          orgName: orgData?.name,
-          docType,
-          refInvoice: isNote ? refInvoice.trim() : null,
-          invoiceType: isInternal
-            ? null
-            : (clientData?.vatNumber ? 'standard' : 'simplified'),
-          orgData: {
-            name: orgData?.name, nameEn: orgData?.nameEn,
-            taxNumber: orgData?.taxNumber, commercialReg: orgData?.commercialReg,
-            address: orgData?.address, phone: orgData?.phone,
-            iban: orgData?.iban,
-          },
-          clientId: useQuick ? null : selectedClient,
-          clientName: clientData?.name,
-          clientData,
-          invoiceNumber,
-          items: itemsData,
-          subtotal,
-          discount: discountVal,
-          discountType,
-          taxableBase,
-          vat, total, notes, status,
-          createdBy: actor,
-          audit: [{ action: 'created', by: actor.email, at: new Date().toISOString() }],
-          createdAt: serverTimestamp(),
-        })
-      })
+      if (isEdit) {
+        await api.updateDraft(editId, payload)
+      } else {
+        await api.createInvoice(payload)
+      }
       navigate('/invoices')
     } catch (err) {
       console.error(err)
